@@ -1,7 +1,11 @@
 import datetime as dt
-from django.http  import HttpResponse,Http404
+from django.http  import HttpResponse,Http404,HttpResponseRedirect
 from django.shortcuts import render,redirect
 from .models import Article
+from django.contrib.auth.decorators import login_required
+from .forms import NewArticleForm, NewsLetterForm
+
+
 
 
 
@@ -9,19 +13,21 @@ from .models import Article
 def welcome(request):
     return HttpResponse('Welcome to the Moringa Tribune')
 
-def news_of_day(request):
-    date = dt.date.today()
+def past_days_news(request,past_date):
+	try:
+	    # Converts data from the string Url
+	    date = dt.datetime.strptime(past_date,'%Y-%m-%d').date()
+	except ValueError:
+		# Raise 404 error when ValueError is thrown
+		raise Http404()
+		assert False
 
-    # FUNCTION TO CONVERT DATE OBJECT TO FIND EXACT DAY
-    day = convert_dates(date)
-    html = f'''
-        <html>
-            <body>
-                <h1>News for {day} {date.day}-{date.month}-{date.year}</h1>
-            </body>
-        </html>
-            '''
-    return HttpResponse(html)
+	if date == dt.date.today():
+		return redirect(news_today)
+
+	news = Article.days_news(date)
+
+	return render(request,'all-news/past-news.html',{"date": date,"news":news})
 
 def news_today(request):
     date = dt.date.today()
@@ -63,10 +69,16 @@ def search_results(request):
     else:
         message = "You haven't searched for any term"
         return render(request, 'all-news/search.html',{"message":message})
-        
-def article(request,article_id):
-    try:
-        article = Article.objects.get(id = article_id)
-    except DoesNotExist:
-        raise Http404()
-    return render(request,"all-news/article.html", {"article":article})
+
+@login_required(login_url='/accounts/login/')
+def new_article(request):
+    current_user = request.user
+    if request.method == 'POST':
+        form = NewArticleForm(request.POST, request.FILES)
+        if form.is_valid():
+            article = form.save(commit=False)
+            article.editor = current_user
+            article.save()
+    else:
+        form = NewArticleForm()
+    return render(request, 'new_article.html', {"form": form})
